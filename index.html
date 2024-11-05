@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Game</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: black;
+            color: white;
+            font-family: Arial, sans-serif;
+            height: 200vh;
+            margin: 0;
+            padding: 0;
+        }
+        #board {
+            display: grid;
+            grid-template-columns: repeat(8, 60px);
+            grid-template-rows: repeat(8, 60px);
+            margin: 20px;
+            border: 4px solid black;
+            background-color: black;
+        }
+        .square {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            color: black;
+        }
+        .dark-square { background-color: #8b4513; }
+        .light-square { background-color: #d2b48c; }
+        .highlight { background-color: #00ff00; } /* Green highlight */
+        .taken-pieces { display: flex; flex-direction: column; }
+        #lost-pieces { color: white; margin-right: 20px; }
+        #captured-pieces { color: white; margin-left: 20px; }
+        #start-button, #reset-button {
+            padding: 10px 20px;
+            background-color: gray;
+            color: white;
+            cursor: pointer;
+            margin: 5px;
+        }
+        #status { margin-top: 20px; }
+        .win-text { color: red; font-size: 18px; }
+        .lose-text { color: red; font-size: 18px; }
+        .draw-text { color: red; font-size: 18px; }
+        .eye-icon {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            font-size: 20px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <div id="start-button">Start Game</div>
+        <div id="reset-button">Reset</div>
+    </div>
+    <div style="display: flex;">
+        <div id="lost-pieces" class="taken-pieces">Lost Pieces:</div>
+        <div id="board"></div>
+        <div id="captured-pieces" class="taken-pieces">Captured Pieces:</div>
+    </div>
+    <div id="status"></div>
+    <div class="eye-icon">👁️</div>
+
+    <!-- chess.js library for game logic -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.12.0/chess.min.js"></script>
+    <script>
+        const board = document.getElementById("board");
+        const startButton = document.getElementById("start-button");
+        const resetButton = document.getElementById("reset-button");
+        const status = document.getElementById("status");
+        const lostPieces = document.getElementById("lost-pieces");
+        const capturedPieces = document.getElementById("captured-pieces");
+
+        let game, isPlayerTurn, selectedSquare, availableMoves;
+        let capturedEnemyPieces = 0; // Count of captured enemy pieces
+
+        const pieceSymbols = {
+            'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔', // White
+            'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚'  // Black
+        };
+
+        function drawBoard() {
+            board.innerHTML = "";
+            const boardArray = game.board();
+            boardArray.forEach((row, y) => {
+                row.forEach((piece, x) => {
+                    const square = document.createElement("div");
+                    square.className = `square ${((x + y) % 2 === 0) ? 'light-square' : 'dark-square'}`;
+                    square.id = `${"abcdefgh"[x]}${8 - y}`;
+                    square.textContent = piece ? pieceSymbols[piece.color === 'w' ? piece.type.toUpperCase() : piece.type] : "";
+                    square.onclick = () => handleSquareClick(square.id);
+                    board.appendChild(square);
+                });
+            });
+        }
+
+        function handleSquareClick(square) {
+            if (!isPlayerTurn) return;
+            const piece = game.get(square);
+
+            clearHighlights();
+
+            if (selectedSquare && availableMoves.includes(square)) {
+                const move = game.move({ from: selectedSquare, to: square, promotion: 'q' }); // Default to Queen if promotion needed
+                if (move.captured) {
+                    capturedEnemyPieces++;
+                }
+                isPlayerTurn = false;
+                selectedSquare = null;
+                availableMoves = [];
+                updateTakenPieces();
+                checkGameState();
+                drawBoard();
+                setTimeout(aiMove, 500); // AI moves after player
+            } else if (piece && piece.color === 'b') {
+                selectedSquare = square;
+                availableMoves = game.moves({ square, verbose: true }).map(m => m.to);
+                highlightMoves(availableMoves);
+            }
+        }
+
+        function highlightMoves(moves) {
+            moves.forEach(move => {
+                const squareElement = document.getElementById(move);
+                if (squareElement) {
+                    squareElement.classList.add("highlight");
+                }
+            });
+        }
+
+        function clearHighlights() {
+            document.querySelectorAll(".highlight").forEach(square => {
+                square.classList.remove("highlight");
+            });
+        }
+
+        function aiMove() {
+            const moves = game.moves();
+            if (moves.length === 0) return;
+
+            const randomMove = moves[Math.floor(Math.random() * moves.length)];
+            game.move(randomMove);
+            isPlayerTurn = true;
+            updateTakenPieces();
+            checkGameState();
+            drawBoard();
+        }
+
+        function updateTakenPieces() {
+            const captured = game.history({ verbose: true }).filter(m => m.captured);
+            lostPieces.textContent = "Lost Pieces: " + captured.filter(m => m.color === 'w').map(m => pieceSymbols[m.captured.toUpperCase()]).join(" ");
+            capturedPieces.textContent = "Captured Pieces: " + captured.filter(m => m.color === 'b').map(m => pieceSymbols[m.captured.toLowerCase()]).join(" ");
+        }
+
+        function checkGameState() {
+    if (game.in_checkmate()) {
+        if (game.turn() === 'w') { // Player wins
+            if (capturedEnemyPieces >= 13) { // Special win condition
+                status.innerHTML = "<span class='win-text'> -.-- --- ..- / -.. . ..-. . .- - . -.. / -- . ..--.. / .-- . .-.. .-.. / .... . .-. . : <a href='https://youtu.be/Z4zSTKJy9hE' target='_blank'>Video</a></span>";
+            } else {
+                status.innerHTML = "<span class='win-text'>-.-- --- ..- / .-- --- -. ..--.. / .-- . .-.. .-.. / .... . .-. . / .- .-. . / ..--- / --. .. ..-. - ... / -....- / .- .. .-. .- -.-. -.- / -....- / - .... .- -. -.- / -.-- --- ..-</span>";
+            }
+        } else { // Player loses
+            status.innerHTML = "<span class='lose-text'>.. / -.-. .- -. / ... . . / .-- .. - .... / .. -. / -.-- --- ..- --..-- / -.-- --- ..- / -.-. .- -. / -.. --- / -... . - - . .-.</span>";
+        }
+    } else if (game.in_stalemate() || game.in_draw()) {
+        const pieces = game.board().flat();
+        const whitePieces = pieces.filter(piece => piece && piece.color === 'w');
+        const blackPieces = pieces.filter(piece => piece && piece.color === 'b');
+
+        // Check if only the black king is left
+        if (blackPieces.length === 1 && blackPieces[0].type === 'k') {
+            // Player wins since only the black king is left
+            status.innerHTML = "<span class='win-text'>-.-- --- ..- / .... .- ...- . / -... . .- - . -. / -- . / -.-. --- -- .--. .-.. . - . .-.. -.--</span>";
+        } else {
+            // Normal draw message
+            status.innerHTML = "<span class='draw-text'>.- / -.. .-. .- .-- ..--.. / .... --- .-- / ... - .-. .- -. --. . .-.-.-</span>";
+        }
+    } else {
+        status.textContent = "";
+    }
+            }
+
+
+        startButton.onclick = () => {
+            game = new Chess();
+            isPlayerTurn = true;
+            selectedSquare = null;
+            availableMoves = [];
+            capturedEnemyPieces = 0; // Reset captured pieces count
+            status.textContent = "";
+            lostPieces.textContent = "Lost Pieces:";
+            capturedPieces.textContent = "Captured Pieces:";
+            drawBoard();
+            aiMove(); // Start the AI's first move
+        };
+
+        resetButton.onclick = () => {
+            location.reload(); // Refresh the page
+        };
+    </script>
+</body>
+</html>
